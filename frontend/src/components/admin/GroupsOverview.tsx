@@ -24,37 +24,41 @@ export const GroupsOverview = () => {
   }, [])
 
   if (error) {
-    return <div class="p-4 rounded bg-red-500/10 text-red-400">{error}</div>
+    return <div class="p-4 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20">{error}</div>
   }
 
   const badge = (text: string, active: boolean) => (
-    <span class={`px-2 py-0.5 rounded text-xs ${active ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-500/20 text-gray-500'}`}>
+    <span class={`px-2 py-0.5 rounded-full text-xs font-medium ${active ? 'text-lc-green' : 'text-lc-muted'}`}
+      style={{ background: active ? 'rgba(180,249,83,0.1)' : 'rgba(163,163,163,0.1)' }}>
       {text}
     </span>
   )
 
   return (
     <div>
-      <h2 class="text-xl font-bold mb-4">Groups Overview</h2>
+      <h2 class="text-xl font-bold mb-6">Groups Overview</h2>
 
       {loading ? (
-        <div style={{ color: 'var(--color-text-secondary)' }}>Loading groups...</div>
+        <div class="flex items-center gap-3" style={{ color: 'var(--color-text-secondary)' }}>
+          <span class="lc-spinner" />
+          Loading groups...
+        </div>
       ) : groups.length === 0 ? (
         <div style={{ color: 'var(--color-text-secondary)' }}>No groups yet.</div>
       ) : (
-        <div class="rounded-lg overflow-hidden" style={{ border: '1px solid var(--color-border)' }}>
+        <div class="lc-card overflow-hidden" style={{ padding: 0 }}>
           <table class="w-full">
             <thead>
-              <tr style={{ background: 'var(--color-bg-tertiary)' }}>
-                <th class="text-left px-4 py-2 text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>Name</th>
-                <th class="text-left px-4 py-2 text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>ID</th>
-                <th class="text-center px-4 py-2 text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>Members</th>
-                <th class="text-left px-4 py-2 text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>Type</th>
+              <tr style={{ background: 'var(--color-bg-primary)' }}>
+                <th class="text-left px-4 py-3 text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>Name</th>
+                <th class="text-left px-4 py-3 text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>ID</th>
+                <th class="text-center px-4 py-3 text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>Members</th>
+                <th class="text-left px-4 py-3 text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>Type</th>
               </tr>
             </thead>
             <tbody>
               {groups.map(group => (
-                <tr key={group.id} style={{ borderTop: '1px solid var(--color-border)' }}>
+                <tr key={group.id} style={{ borderTop: '1px solid var(--color-border)' }} class="hover:bg-white/[0.02] transition-colors">
                   <td class="px-4 py-3">
                     <div class="font-medium">{group.name || '(unnamed)'}</div>
                     {group.about && (

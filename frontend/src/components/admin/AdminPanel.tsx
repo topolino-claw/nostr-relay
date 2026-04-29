@@ -4,8 +4,9 @@ import { AdminAuth } from './AdminAuth'
 import { Dashboard } from './Dashboard'
 import { WhitelistManager } from './WhitelistManager'
 import { GroupsOverview } from './GroupsOverview'
+import { ReferenceAccountsManager } from './ReferenceAccountsManager'
 
-type Tab = 'dashboard' | 'whitelist' | 'groups'
+type Tab = 'dashboard' | 'whitelist' | 'groups' | 'reference-accounts'
 
 export const AdminPanel = (_props: { path?: string }) => {
   const [authenticated, setAuthenticated] = useState(false)
@@ -33,7 +34,10 @@ export const AdminPanel = (_props: { path?: string }) => {
   if (checking) {
     return (
       <div class="min-h-screen flex items-center justify-center" style={{ background: 'var(--color-bg-primary)' }}>
-        <div style={{ color: 'var(--color-text-secondary)' }}>Checking session...</div>
+        <div class="flex items-center gap-3" style={{ color: 'var(--color-text-secondary)' }}>
+          <span class="lc-spinner" />
+          Checking session...
+        </div>
       </div>
     )
   }
@@ -50,6 +54,7 @@ export const AdminPanel = (_props: { path?: string }) => {
   const tabs: Array<{ id: Tab; label: string }> = [
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'whitelist', label: 'Whitelist' },
+    { id: 'reference-accounts', label: 'Reference Accounts' },
     { id: 'groups', label: 'Groups' },
   ]
 
@@ -58,8 +63,8 @@ export const AdminPanel = (_props: { path?: string }) => {
       {/* Sidebar */}
       <div class="w-56 flex-shrink-0 flex flex-col" style={{ background: 'var(--color-bg-secondary)', borderRight: '1px solid var(--color-border)' }}>
         <div class="p-4">
-          <a href="/" class="text-lg font-bold block">Relay Admin</a>
-          <div class="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>Management Panel</div>
+          <a href="/" class="text-lg font-bold block" style={{ color: '#b4f953' }}>Obelisk Relay</a>
+          <div class="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>Admin Panel</div>
         </div>
 
         <nav class="flex-1 px-2">
@@ -67,10 +72,11 @@ export const AdminPanel = (_props: { path?: string }) => {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              class={`w-full text-left px-3 py-2 rounded-lg mb-1 text-sm transition-colors ${activeTab === tab.id ? 'font-medium' : ''}`}
+              class={`w-full text-left px-3 py-2 rounded-lg mb-1 text-sm transition-all ${activeTab === tab.id ? 'font-medium' : ''}`}
               style={{
-                background: activeTab === tab.id ? 'var(--color-bg-tertiary)' : 'transparent',
-                color: activeTab === tab.id ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                background: activeTab === tab.id ? 'rgba(180,249,83,0.08)' : 'transparent',
+                color: activeTab === tab.id ? '#b4f953' : 'var(--color-text-secondary)',
+                borderLeft: activeTab === tab.id ? '2px solid #b4f953' : '2px solid transparent',
               }}
             >
               {tab.label}
@@ -79,12 +85,12 @@ export const AdminPanel = (_props: { path?: string }) => {
         </nav>
 
         <div class="p-4" style={{ borderTop: '1px solid var(--color-border)' }}>
-          <a href="/app" class="block text-sm mb-2" style={{ color: 'var(--color-text-secondary)' }}>
+          <a href="https://dex.obelisk.ar" target="_blank" rel="noopener noreferrer" class="block text-sm mb-2 hover:underline" style={{ color: 'var(--color-text-secondary)' }}>
             Open Chat
           </a>
           <button
             onClick={handleLogout}
-            class="text-sm text-red-400 hover:text-red-300"
+            class="text-sm text-red-400 hover:text-red-300 transition-colors"
           >
             Logout
           </button>
@@ -95,6 +101,7 @@ export const AdminPanel = (_props: { path?: string }) => {
       <div class="flex-1 p-6 overflow-auto">
         {activeTab === 'dashboard' && <Dashboard />}
         {activeTab === 'whitelist' && <WhitelistManager />}
+        {activeTab === 'reference-accounts' && <ReferenceAccountsManager />}
         {activeTab === 'groups' && <GroupsOverview />}
       </div>
     </div>

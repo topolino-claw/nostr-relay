@@ -1,7 +1,8 @@
 use crate::{
-    admin, app_state::HttpServerState, config, groups::Groups,
+    admin, app_state::HttpServerState, config, follow_sync, groups::Groups,
     groups_event_processor::GroupsRelayProcessor, handler, metrics,
     metrics_handler::PrometheusSubscriptionMetricsHandler,
+    reference_accounts::ReferenceAccounts,
     sampled_metrics_handler::SampledMetricsHandler, whitelist::Whitelist, RelayDatabase,
 };
 use anyhow::Result;
@@ -30,6 +31,7 @@ pub struct ServerState {
     pub connection_counter: Arc<AtomicUsize>,
     pub relay_url: String,
     pub whitelist: Whitelist,
+    pub reference_accounts: ReferenceAccounts,
     pub start_time: std::time::Instant,
     pub config_dir: String,
 }
@@ -88,6 +90,25 @@ pub async fn run_server(
         info!("Whitelist enabled: {} pubkeys allowed", whitelist.len());
     }
 
+    // Load reference accounts
+    let reference_accounts = ReferenceAccounts::new(Some(config_dir));
+    if reference_accounts.len() > 0 {
+        info!(
+            "Reference accounts loaded: {} accounts",
+            reference_accounts.len()
+        );
+    }
+
+    // Load follow-derived whitelist
+    let follow_derived = follow_sync::load_follow_derived(config_dir);
+    if !follow_derived.is_empty() {
+        info!(
+            "Follow-derived whitelist loaded: {} pubkeys",
+            follow_derived.len()
+        );
+        whitelist.set_follow_derived(follow_derived);
+    }
+
     // Parse admin pubkeys
     let admin_pubkeys: Vec<PublicKey> = settings
         .admin_keys
@@ -142,6 +163,7 @@ pub async fn run_server(
         connection_counter: connection_counter.clone(),
         relay_url: settings.relay_url.clone(),
         whitelist: whitelist.clone(),
+        reference_accounts: reference_accounts.clone(),
         start_time: std::time::Instant::now(),
         config_dir: "config".to_string(),
     });
@@ -205,8 +227,7 @@ pub async fn run_server(
         .route("/health", get(|| async { "OK" }))
         .route("/metrics", get(metrics_handler))
         .merge(api_routes)
-        .nest_service("/assets", ServeDir::new("frontend/dist/assets"))
-        .fallback(handler::serve_frontend)
+        .fallback_service(ServeDir::new("frontend/dist").fallback(tower_http::services::ServeFile::new("frontend/dist/index.html")))
         .layer(cors);
 
     let addr = settings.local_addr.parse::<SocketAddr>()?;

@@ -2,23 +2,199 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Obelisk Design Tokens ── */
 :root {
-  --color-bg-primary: #1a1a2e;
-  --color-bg-secondary: #22223b;
-  --color-bg-tertiary: #2a2a45;
-  --color-text-primary: #ffffff;
-  --color-text-secondary: #a8a8b3;
-  --color-accent: #ff4b4b;
-  --color-accent-hover: #ff6b6b;
-  --color-border: #2e2e4a;
+  --color-bg-primary: #0a0a0a;
+  --color-bg-secondary: #171717;
+  --color-bg-tertiary: #1a1a1a;
+  --color-text-primary: #fafafa;
+  --color-text-secondary: #a3a3a3;
+  --color-accent: #b4f953;
+  --color-accent-hover: #c5ff6e;
+  --color-border: #262626;
+  --color-lc-olive: #2d3a1a;
+  --color-lc-olive-dark: #1e2812;
 }
 
+/* ── Base ── */
 body {
+  font-family: 'Inter', sans-serif;
   background-color: var(--color-bg-primary);
   color: var(--color-text-primary);
 }
 
-/* Custom tooltip styles */
+::selection {
+  background: rgba(180, 249, 83, 0.25);
+  color: #fafafa;
+}
+
+/* ── Custom Scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+/* ── Grid Background ── */
+.lc-grid-bg {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
+
+/* ── Cards ── */
+.lc-card {
+  background: #171717;
+  border: 1px solid #262626;
+  border-radius: 12px;
+  transition: all 0.3s ease;
+}
+.lc-card:hover {
+  border-color: #3a3a3a;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  transform: translateY(-1px);
+}
+
+/* ── Glow Effects ── */
+.lc-glow {
+  box-shadow: 0 0 60px rgba(180,249,83,0.08), 0 0 120px rgba(180,249,83,0.04);
+}
+.lc-glow-text {
+  text-shadow: 0 0 40px rgba(180,249,83,0.3);
+}
+
+/* ── Pill Buttons ── */
+.lc-pill-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  padding: 10px 24px;
+  font-weight: 600;
+  background: #b4f953;
+  color: #0a0a0a;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border: none;
+}
+.lc-pill-primary:hover {
+  background: #c5ff6e;
+  box-shadow: 0 0 20px rgba(180,249,83,0.3);
+}
+.lc-pill-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.lc-pill-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  padding: 10px 24px;
+  font-weight: 600;
+  background: #262626;
+  color: #fafafa;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border: none;
+}
+.lc-pill-secondary:hover {
+  background: #333;
+}
+
+/* ── Spinner ── */
+.lc-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #262626;
+  border-top-color: #b4f953;
+  border-radius: 50%;
+  animation: lc-spin 0.8s linear infinite;
+}
+
+/* ── Skeleton ── */
+.lc-skeleton {
+  background: linear-gradient(90deg, #1a1a1a 25%, #262626 50%, #1a1a1a 75%);
+  background-size: 400% 100%;
+  animation: lc-skeleton 1.8s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+/* ── Animations ── */
+@keyframes shimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.3; }
+  50% { transform: scale(1.4); opacity: 0.6; }
+}
+
+@keyframes float-up {
+  0% { transform: translateY(0) translateX(0); opacity: var(--float-start-opacity, 0.4); }
+  100% { transform: translateY(-100vh) translateX(20px); opacity: 0; }
+}
+
+@keyframes orbit {
+  from { transform: rotate(0deg) translateX(var(--orbit-radius, 110px)) rotate(0deg); }
+  to { transform: rotate(360deg) translateX(var(--orbit-radius, 110px)) rotate(-360deg); }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes particle {
+  0% { opacity: 0; transform: scale(0.5); }
+  20% { opacity: 0.6; transform: scale(1); }
+  80% { opacity: 0.4; transform: scale(0.8); }
+  100% { opacity: 0; transform: scale(0.3); transform: translateY(-25px); }
+}
+
+@keyframes lc-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes lc-skeleton {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Animation Utility Classes ── */
+.animate-fade-in-up {
+  animation: fade-in-up 0.6s ease-out both;
+}
+.animate-glow-pulse {
+  animation: glow-pulse 4s ease-in-out infinite;
+}
+.animate-shimmer {
+  animation: shimmer 15s ease infinite;
+}
+
+/* ── Accessibility ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Tooltip styles ── */
 [data-tooltip] {
   position: relative;
 }
@@ -39,32 +215,39 @@ body {
   pointer-events: none;
 }
 
+/* ── Role badges ── */
 .role-badge {
   @apply px-1.5 py-0.5 rounded-full text-white;
 }
-
 .role-badge.admin {
   @apply bg-yellow-500;
 }
-
 .role-badge.moderator {
   @apply bg-blue-500;
 }
-
 .role-badge.member {
   @apply bg-gray-500;
 }
 
 @layer components {
   .name-input {
-    @apply text-2xl font-semibold px-3 py-2 border border-gray-200 rounded-lg bg-gray-50
-           hover:border-gray-400 focus:border-accent focus:outline-none focus:ring-2
-           focus:ring-accent/10 focus:bg-white transition-all min-w-[200px];
+    @apply text-2xl font-semibold px-3 py-2 border rounded-lg
+           hover:border-gray-600 focus:outline-none focus:ring-2
+           transition-all min-w-[200px];
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
+    border-color: var(--color-border);
+  }
+  .name-input:focus {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 2px rgba(180,249,83,0.1);
   }
 
   .save-button {
-    @apply px-4 py-2 bg-success text-white rounded-lg text-sm font-medium
+    @apply px-4 py-2 text-white rounded-lg text-sm font-medium
            hover:opacity-90 active:transform active:translate-y-0.5 transition-all;
+    background: var(--color-accent);
+    color: #0a0a0a;
   }
 }
 

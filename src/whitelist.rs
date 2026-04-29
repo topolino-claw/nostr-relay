@@ -6,10 +6,14 @@ use tracing::{info, warn};
 
 const RUNTIME_FILE: &str = "whitelist_runtime.json";
 
-/// Thread-safe shared whitelist that supports runtime modifications and persistence.
+/// Thread-safe shared whitelist that supports runtime modifications, persistence,
+/// and follow-derived entries from reference accounts.
 #[derive(Debug, Clone)]
 pub struct Whitelist {
+    /// Manually added pubkeys (config + runtime overrides)
     inner: Arc<RwLock<Vec<PublicKey>>>,
+    /// Follow-derived pubkeys (from reference account sync)
+    follow_derived: Arc<RwLock<Vec<PublicKey>>>,
 }
 
 impl Whitelist {
@@ -46,25 +50,45 @@ impl Whitelist {
 
         Self {
             inner: Arc::new(RwLock::new(pubkeys)),
+            follow_derived: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
-    /// Check if a pubkey is in the whitelist.
+    /// Check if a pubkey is in the whitelist (manual or follow-derived).
     pub fn contains(&self, pk: &PublicKey) -> bool {
-        self.inner.read().contains(pk)
+        self.inner.read().contains(pk) || self.follow_derived.read().contains(pk)
     }
 
     /// Check if the whitelist is empty (no restrictions).
+    /// Both manual and follow-derived must be empty for no restriction.
     pub fn is_empty(&self) -> bool {
-        self.inner.read().is_empty()
+        self.inner.read().is_empty() && self.follow_derived.read().is_empty()
     }
 
-    /// Return a snapshot of all whitelisted pubkeys.
+    /// Return a snapshot of all whitelisted pubkeys (manual + follow-derived union).
     pub fn list(&self) -> Vec<PublicKey> {
+        let manual = self.inner.read().clone();
+        let follows = self.follow_derived.read().clone();
+        let mut combined = manual;
+        for pk in follows {
+            if !combined.contains(&pk) {
+                combined.push(pk);
+            }
+        }
+        combined
+    }
+
+    /// Return only the manually added pubkeys.
+    pub fn list_manual(&self) -> Vec<PublicKey> {
         self.inner.read().clone()
     }
 
-    /// Add a pubkey to the whitelist. Returns true if it was added (not already present).
+    /// Return only the follow-derived pubkeys.
+    pub fn list_follow_derived(&self) -> Vec<PublicKey> {
+        self.follow_derived.read().clone()
+    }
+
+    /// Add a pubkey to the manual whitelist. Returns true if it was added (not already present).
     pub fn add(&self, pk: PublicKey) -> bool {
         let mut guard = self.inner.write();
         if guard.contains(&pk) {
@@ -74,7 +98,7 @@ impl Whitelist {
         true
     }
 
-    /// Remove a pubkey from the whitelist. Returns true if it was removed.
+    /// Remove a pubkey from the manual whitelist. Returns true if it was removed.
     pub fn remove(&self, pk: &PublicKey) -> bool {
         let mut guard = self.inner.write();
         let len_before = guard.len();
@@ -82,12 +106,18 @@ impl Whitelist {
         guard.len() < len_before
     }
 
-    /// Number of whitelisted pubkeys.
+    /// Number of whitelisted pubkeys (manual + follow-derived, deduplicated).
     pub fn len(&self) -> usize {
-        self.inner.read().len()
+        self.list().len()
     }
 
-    /// Persist the current whitelist to `config/whitelist_runtime.json`.
+    /// Replace the entire follow-derived set.
+    pub fn set_follow_derived(&self, pubkeys: Vec<PublicKey>) {
+        let mut guard = self.follow_derived.write();
+        *guard = pubkeys;
+    }
+
+    /// Persist the manual whitelist to `config/whitelist_runtime.json`.
     pub fn persist(&self, config_dir: &Path) -> Result<(), std::io::Error> {
         let hex_keys: Vec<String> = self.inner.read().iter().map(|pk| pk.to_hex()).collect();
         let json = serde_json::to_string_pretty(&hex_keys)

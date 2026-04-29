@@ -3,12 +3,14 @@ pub mod app_state;
 pub mod config;
 pub mod create_client;
 pub mod error;
+pub mod follow_sync;
 pub mod group;
 pub mod groups;
 pub mod groups_event_processor;
 pub mod handler;
 pub mod metrics;
 pub mod metrics_handler;
+pub mod reference_accounts;
 #[cfg(test)]
 pub mod relay_middleware_integration_tests;
 #[cfg(test)]

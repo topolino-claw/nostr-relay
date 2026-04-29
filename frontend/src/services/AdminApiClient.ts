@@ -100,6 +100,25 @@ export class AdminApiClient {
   }> {
     return this.request('/api/admin/stats')
   }
+
+  async getReferenceAccounts(): Promise<Array<{ hex: string; npub: string }>> {
+    return this.request('/api/admin/reference-accounts')
+  }
+
+  async addReferenceAccount(pubkey: string): Promise<{ hex: string; npub: string }> {
+    return this.request('/api/admin/reference-accounts', {
+      method: 'POST',
+      body: JSON.stringify({ pubkey }),
+    })
+  }
+
+  async removeReferenceAccount(hex: string): Promise<void> {
+    return this.request(`/api/admin/reference-accounts/${hex}`, { method: 'DELETE' })
+  }
+
+  async syncFollows(): Promise<{ derived_count: number; message: string }> {
+    return this.request('/api/admin/reference-accounts/sync', { method: 'POST' })
+  }
 }
 
 export const adminApi = new AdminApiClient()

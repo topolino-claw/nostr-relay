@@ -35,29 +35,34 @@ export const Dashboard = () => {
   }, [])
 
   if (error) {
-    return <div class="p-4 rounded bg-red-500/10 text-red-400">{error}</div>
+    return <div class="p-4 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20">{error}</div>
   }
 
   if (!stats) {
-    return <div style={{ color: 'var(--color-text-secondary)' }}>Loading stats...</div>
+    return (
+      <div class="flex items-center gap-3" style={{ color: 'var(--color-text-secondary)' }}>
+        <span class="lc-spinner" />
+        Loading stats...
+      </div>
+    )
   }
 
   const cards = [
-    { label: 'Active Connections', value: stats.active_connections },
-    { label: 'Total Groups', value: stats.total_groups },
-    { label: 'Total Members', value: stats.total_members },
-    { label: 'Whitelisted Pubkeys', value: stats.whitelisted_count },
-    { label: 'Uptime', value: formatUptime(stats.uptime_seconds) },
+    { label: 'Active Connections', value: stats.active_connections, highlight: true },
+    { label: 'Total Groups', value: stats.total_groups, highlight: false },
+    { label: 'Total Members', value: stats.total_members, highlight: false },
+    { label: 'Whitelisted Pubkeys', value: stats.whitelisted_count, highlight: true },
+    { label: 'Uptime', value: formatUptime(stats.uptime_seconds), highlight: false },
   ]
 
   return (
     <div>
-      <h2 class="text-xl font-bold mb-4">Dashboard</h2>
+      <h2 class="text-xl font-bold mb-6">Dashboard</h2>
       <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
         {cards.map(card => (
-          <div key={card.label} class="rounded-lg p-4" style={{ background: 'var(--color-bg-tertiary)', border: '1px solid var(--color-border)' }}>
-            <div class="text-2xl font-bold">{card.value}</div>
-            <div class="text-sm" style={{ color: 'var(--color-text-secondary)' }}>{card.label}</div>
+          <div key={card.label} class="lc-card p-5">
+            <div class="text-2xl font-bold" style={{ color: card.highlight ? '#b4f953' : 'var(--color-text-primary)' }}>{card.value}</div>
+            <div class="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>{card.label}</div>
           </div>
         ))}
       </div>

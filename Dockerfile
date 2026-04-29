@@ -45,6 +45,7 @@ COPY frontend/pnpm-lock.yaml ./
 RUN npm install -g pnpm && pnpm install
 
 COPY frontend/src ./src
+COPY frontend/public ./public
 COPY frontend/index.html ./
 COPY frontend/vite.config.mts ./
 COPY frontend/tsconfig.json ./

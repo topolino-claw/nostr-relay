@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'preact/hooks'
 import { adminApi } from '../../services/AdminApiClient'
+import { fetchProfiles, getDisplayName, type NostrProfile } from '../../services/ProfileFetcher'
 
 interface WhitelistEntry {
   hex: string
@@ -8,11 +9,13 @@ interface WhitelistEntry {
 
 export const WhitelistManager = () => {
   const [entries, setEntries] = useState<WhitelistEntry[]>([])
+  const [profiles, setProfiles] = useState<Map<string, NostrProfile>>(new Map())
   const [newPubkey, setNewPubkey] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [profilesLoading, setProfilesLoading] = useState(false)
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -22,9 +25,22 @@ export const WhitelistManager = () => {
   const fetchWhitelist = () => {
     setLoading(true)
     adminApi.getWhitelist()
-      .then(data => { setEntries(data); setError(null) })
+      .then(data => { setEntries(data); setError(null); loadProfiles(data) })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
+  }
+
+  const loadProfiles = async (data: WhitelistEntry[]) => {
+    if (data.length === 0) return
+    setProfilesLoading(true)
+    try {
+      const profs = await fetchProfiles(data.map(e => e.hex))
+      setProfiles(profs)
+    } catch {
+      // Profiles are optional
+    } finally {
+      setProfilesLoading(false)
+    }
   }
 
   useEffect(fetchWhitelist, [])
@@ -37,6 +53,15 @@ export const WhitelistManager = () => {
       setEntries(prev => [...prev.filter(e => e.hex !== entry.hex), entry])
       setNewPubkey('')
       showToast('Pubkey added to whitelist')
+      // Fetch profile for new entry
+      fetchProfiles([entry.hex]).then(profs => {
+        setProfiles(prev => {
+          const next = new Map(prev)
+          const p = profs.get(entry.hex)
+          if (p) next.set(entry.hex, p)
+          return next
+        })
+      })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to add')
     }
@@ -58,16 +83,16 @@ export const WhitelistManager = () => {
 
   return (
     <div>
-      <h2 class="text-xl font-bold mb-4">Whitelist Management</h2>
+      <h2 class="text-xl font-bold mb-6">Whitelist Management</h2>
 
       {toast && (
-        <div class="mb-4 p-3 rounded text-sm bg-green-500/10 text-green-400 border border-green-500/20">
+        <div class="mb-4 p-3 rounded-lg text-sm border" style={{ background: 'rgba(180,249,83,0.08)', color: '#b4f953', borderColor: 'rgba(180,249,83,0.2)' }}>
           {toast}
         </div>
       )}
 
       {error && (
-        <div class="mb-4 p-3 rounded text-sm bg-red-500/10 text-red-400 border border-red-500/20">
+        <div class="mb-4 p-3 rounded-lg text-sm bg-red-500/10 text-red-400 border border-red-500/20">
           {error}
         </div>
       )}
@@ -86,8 +111,8 @@ export const WhitelistManager = () => {
         <button
           onClick={handleAdd}
           disabled={!newPubkey.trim()}
-          class="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
-          style={{ background: 'var(--color-accent)', color: '#fff' }}
+          class="lc-pill-primary text-sm"
+          style={{ padding: '8px 20px', borderRadius: '10px' }}
         >
           Add
         </button>
@@ -95,51 +120,85 @@ export const WhitelistManager = () => {
 
       {/* Table */}
       {loading ? (
-        <div style={{ color: 'var(--color-text-secondary)' }}>Loading...</div>
+        <div class="space-y-2">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} class="lc-skeleton h-14 w-full" />
+          ))}
+        </div>
       ) : entries.length === 0 ? (
         <div style={{ color: 'var(--color-text-secondary)' }}>No whitelisted pubkeys. The relay is open to all.</div>
       ) : (
-        <div class="rounded-lg overflow-hidden" style={{ border: '1px solid var(--color-border)' }}>
+        <div class="lc-card overflow-hidden" style={{ padding: 0 }}>
           <table class="w-full">
             <thead>
-              <tr style={{ background: 'var(--color-bg-tertiary)' }}>
-                <th class="text-left px-4 py-2 text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>Hex</th>
-                <th class="text-left px-4 py-2 text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>npub</th>
-                <th class="text-right px-4 py-2 text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>Actions</th>
+              <tr style={{ background: 'var(--color-bg-primary)' }}>
+                <th class="text-left px-4 py-3 text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>Profile</th>
+                <th class="text-left px-4 py-3 text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>npub</th>
+                <th class="text-right px-4 py-3 text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {entries.map(entry => (
-                <tr key={entry.hex} style={{ borderTop: '1px solid var(--color-border)' }}>
-                  <td class="px-4 py-3 text-sm font-mono">{truncate(entry.hex)}</td>
-                  <td class="px-4 py-3 text-sm font-mono" style={{ color: 'var(--color-text-secondary)' }}>{truncate(entry.npub)}</td>
-                  <td class="px-4 py-3 text-right">
-                    {confirmRemove === entry.hex ? (
-                      <span class="space-x-2">
+              {entries.map(entry => {
+                const profile = profiles.get(entry.hex)
+                return (
+                  <tr key={entry.hex} style={{ borderTop: '1px solid var(--color-border)' }} class="hover:bg-white/[0.02] transition-colors">
+                    <td class="px-4 py-3">
+                      <div class="flex items-center gap-3">
+                        {profilesLoading && !profile ? (
+                          <div class="lc-skeleton w-8 h-8 rounded-full flex-shrink-0" />
+                        ) : profile?.picture ? (
+                          <img src={profile.picture} alt="" class="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                            style={{ border: '1px solid var(--color-border)' }}
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                        ) : (
+                          <div class="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold"
+                            style={{ background: 'rgba(180,249,83,0.1)', color: '#b4f953' }}>
+                            {(profile?.name || entry.npub.slice(5, 7) || '??').slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
+                        <div>
+                          <div class="text-sm font-medium">
+                            {profilesLoading && !profile ? (
+                              <span class="lc-skeleton inline-block w-24 h-4" />
+                            ) : (
+                              getDisplayName(profile, entry.npub)
+                            )}
+                          </div>
+                          <div class="text-xs font-mono" style={{ color: 'var(--color-text-secondary)' }}>
+                            {truncate(entry.hex)}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td class="px-4 py-3 text-sm font-mono" style={{ color: 'var(--color-text-secondary)' }}>{truncate(entry.npub)}</td>
+                    <td class="px-4 py-3 text-right">
+                      {confirmRemove === entry.hex ? (
+                        <span class="space-x-2">
+                          <button
+                            onClick={() => handleRemove(entry.hex)}
+                            class="text-sm text-red-400 hover:text-red-300 transition-colors"
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            onClick={() => setConfirmRemove(null)}
+                            class="text-sm transition-colors" style={{ color: 'var(--color-text-secondary)' }}
+                          >
+                            Cancel
+                          </button>
+                        </span>
+                      ) : (
                         <button
-                          onClick={() => handleRemove(entry.hex)}
-                          class="text-sm text-red-400 hover:text-red-300"
+                          onClick={() => setConfirmRemove(entry.hex)}
+                          class="text-sm text-red-400 hover:text-red-300 transition-colors"
                         >
-                          Confirm
+                          Remove
                         </button>
-                        <button
-                          onClick={() => setConfirmRemove(null)}
-                          class="text-sm" style={{ color: 'var(--color-text-secondary)' }}
-                        >
-                          Cancel
-                        </button>
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => setConfirmRemove(entry.hex)}
-                        class="text-sm text-red-400 hover:text-red-300"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

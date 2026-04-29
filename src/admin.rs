@@ -1,3 +1,4 @@
+use crate::follow_sync;
 use crate::server::ServerState;
 use axum::{
     extract::{Path, State},
@@ -12,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 // --- Types ---
 
@@ -100,6 +101,23 @@ struct SessionCheckResponse {
     pubkey: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct AddReferenceAccountRequest {
+    pubkey: String,
+}
+
+#[derive(Serialize)]
+struct ReferenceAccountEntry {
+    hex: String,
+    npub: String,
+}
+
+#[derive(Serialize)]
+struct SyncFollowsResponse {
+    derived_count: usize,
+    message: String,
+}
+
 // --- Helper: generate random hex ---
 
 fn random_hex(bytes: usize) -> String {
@@ -151,6 +169,18 @@ pub fn admin_routes() -> Router<Arc<ServerState>> {
         .route("/whitelist/{hex}", delete(handle_whitelist_remove))
         .route("/groups", get(handle_groups))
         .route("/stats", get(handle_stats))
+        .route(
+            "/reference-accounts",
+            get(handle_reference_accounts_list).post(handle_reference_accounts_add),
+        )
+        .route(
+            "/reference-accounts/{hex}",
+            delete(handle_reference_accounts_remove),
+        )
+        .route(
+            "/reference-accounts/sync",
+            post(handle_reference_accounts_sync),
+        )
 }
 
 pub fn public_api_routes() -> Router<Arc<ServerState>> {
@@ -495,6 +525,163 @@ async fn handle_relay_info(
         group_count,
         supported_nips: vec![1, 9, 11, 29, 40, 42, 70],
     })
+}
+
+// --- Reference accounts handlers ---
+
+async fn handle_reference_accounts_list(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    let admin_state = get_admin_state(&state);
+    if validate_session(&admin_state, &headers).is_none() {
+        return Err(unauthorized());
+    }
+
+    let entries: Vec<ReferenceAccountEntry> = state
+        .reference_accounts
+        .list()
+        .iter()
+        .map(|pk| ReferenceAccountEntry {
+            hex: pk.to_hex(),
+            npub: pk.to_bech32().unwrap_or_default(),
+        })
+        .collect();
+
+    Ok(Json(entries))
+}
+
+async fn handle_reference_accounts_add(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+    Json(req): Json<AddReferenceAccountRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    let admin_state = get_admin_state(&state);
+    if validate_session(&admin_state, &headers).is_none() {
+        return Err(unauthorized());
+    }
+
+    let pk = if req.pubkey.starts_with("npub") {
+        PublicKey::from_bech32(&req.pubkey).map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "Invalid npub".to_string(),
+                }),
+            )
+        })?
+    } else {
+        PublicKey::from_hex(&req.pubkey).map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "Invalid hex pubkey".to_string(),
+                }),
+            )
+        })?
+    };
+
+    let added = state.reference_accounts.add(pk);
+    if added {
+        if let Err(e) = state
+            .reference_accounts
+            .persist(std::path::Path::new(&state.config_dir))
+        {
+            warn!("Failed to persist reference accounts: {}", e);
+        }
+    }
+
+    Ok((
+        StatusCode::OK,
+        Json(ReferenceAccountEntry {
+            hex: pk.to_hex(),
+            npub: pk.to_bech32().unwrap_or_default(),
+        }),
+    ))
+}
+
+async fn handle_reference_accounts_remove(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+    Path(hex): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    let admin_state = get_admin_state(&state);
+    if validate_session(&admin_state, &headers).is_none() {
+        return Err(unauthorized());
+    }
+
+    let pk = PublicKey::from_hex(&hex).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Invalid hex pubkey".to_string(),
+            }),
+        )
+    })?;
+
+    let removed = state.reference_accounts.remove(&pk);
+    if removed {
+        if let Err(e) = state
+            .reference_accounts
+            .persist(std::path::Path::new(&state.config_dir))
+        {
+            warn!("Failed to persist reference accounts: {}", e);
+        }
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn handle_reference_accounts_sync(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    let admin_state = get_admin_state(&state);
+    if validate_session(&admin_state, &headers).is_none() {
+        return Err(unauthorized());
+    }
+
+    let ref_accounts = state.reference_accounts.list();
+    if ref_accounts.is_empty() {
+        return Ok(Json(SyncFollowsResponse {
+            derived_count: 0,
+            message: "No reference accounts configured".to_string(),
+        }));
+    }
+
+    info!("Starting follow sync for {} reference accounts", ref_accounts.len());
+
+    let follows = follow_sync::sync_follows(&ref_accounts).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("Sync failed: {}", e),
+            }),
+        )
+    })?;
+
+    let count = follows.len();
+
+    // Update whitelist follow-derived set
+    state.whitelist.set_follow_derived(follows.clone());
+
+    // Persist to disk
+    if let Err(e) =
+        follow_sync::persist_follow_derived(&follows, std::path::Path::new(&state.config_dir))
+    {
+        warn!("Failed to persist follow-derived whitelist: {}", e);
+    }
+
+    info!("Follow sync complete: {} derived pubkeys", count);
+
+    Ok(Json(SyncFollowsResponse {
+        derived_count: count,
+        message: format!(
+            "Synced {} follows from {} reference accounts",
+            count,
+            ref_accounts.len()
+        ),
+    }))
 }
 
 // --- State helpers ---

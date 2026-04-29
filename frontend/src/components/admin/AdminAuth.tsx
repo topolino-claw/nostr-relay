@@ -20,10 +20,8 @@ export const AdminAuth = ({ onAuthenticated }: AdminAuthProps) => {
         throw new Error('No NIP-07 extension found. Install a Nostr signer extension (nos2x, Alby, etc.)')
       }
 
-      // Get challenge
       const { challenge } = await adminApi.getChallenge()
 
-      // Build unsigned event for NIP-42 AUTH
       const event = {
         kind: 22242,
         created_at: Math.floor(Date.now() / 1000),
@@ -34,10 +32,8 @@ export const AdminAuth = ({ onAuthenticated }: AdminAuthProps) => {
         content: '',
       }
 
-      // Sign with extension
       const signedEvent = await (window as any).nostr.signEvent(event)
 
-      // Authenticate
       await adminApi.authenticate(signedEvent)
       onAuthenticated()
     } catch (e) {
@@ -52,7 +48,6 @@ export const AdminAuth = ({ onAuthenticated }: AdminAuthProps) => {
     setLoading(true)
 
     try {
-      // Dynamic import nostr-tools for key handling
       const { finalizeEvent } = await import('nostr-tools')
       const { decode } = await import('nostr-tools/nip19')
 
@@ -62,14 +57,11 @@ export const AdminAuth = ({ onAuthenticated }: AdminAuthProps) => {
         if (decoded.type !== 'nsec') throw new Error('Invalid nsec')
         secretKeyBytes = decoded.data
       } else {
-        // Treat as hex
         secretKeyBytes = new Uint8Array(nsec.match(/.{1,2}/g)!.map(b => parseInt(b, 16)))
       }
 
-      // Get challenge
       const { challenge } = await adminApi.getChallenge()
 
-      // Build and sign event
       const event = finalizeEvent({
         kind: 22242,
         created_at: Math.floor(Date.now() / 1000),
@@ -80,7 +72,6 @@ export const AdminAuth = ({ onAuthenticated }: AdminAuthProps) => {
         content: '',
       }, secretKeyBytes)
 
-      // Authenticate
       await adminApi.authenticate(event)
       onAuthenticated()
     } catch (e) {
@@ -92,14 +83,14 @@ export const AdminAuth = ({ onAuthenticated }: AdminAuthProps) => {
 
   return (
     <div class="min-h-screen flex items-center justify-center px-4" style={{ background: 'var(--color-bg-primary)' }}>
-      <div class="max-w-md w-full rounded-lg p-8" style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
-        <h1 class="text-2xl font-bold mb-2 text-center">Admin Panel</h1>
+      <div class="max-w-md w-full lc-card lc-glow p-8">
+        <h1 class="text-2xl font-bold mb-2 text-center lc-glow-text" style={{ color: '#b4f953' }}>Admin Panel</h1>
         <p class="text-sm text-center mb-6" style={{ color: 'var(--color-text-secondary)' }}>
           Sign in with your Nostr identity to manage the relay.
         </p>
 
         {error && (
-          <div class="mb-4 p-3 rounded text-sm bg-red-500/10 text-red-400 border border-red-500/20">
+          <div class="mb-4 p-3 rounded-lg text-sm bg-red-500/10 text-red-400 border border-red-500/20">
             {error}
           </div>
         )}
@@ -109,21 +100,26 @@ export const AdminAuth = ({ onAuthenticated }: AdminAuthProps) => {
             <button
               onClick={signWithExtension}
               disabled={loading}
-              class="w-full py-3 rounded-lg font-medium transition-colors disabled:opacity-50"
-              style={{ background: 'var(--color-accent)', color: '#fff' }}
+              class="w-full lc-pill-primary py-3 text-base"
+              style={{ borderRadius: '10px' }}
             >
-              {loading ? 'Signing...' : 'Sign in with Extension (NIP-07)'}
+              {loading ? (
+                <span class="flex items-center justify-center gap-2">
+                  <span class="lc-spinner" style={{ width: '16px', height: '16px', borderTopColor: '#0a0a0a' }} />
+                  Signing...
+                </span>
+              ) : 'Sign in with Extension (NIP-07)'}
             </button>
             <button
               onClick={() => setMode('nsec')}
               disabled={loading}
-              class="w-full py-3 rounded-lg font-medium transition-colors disabled:opacity-50"
-              style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border)' }}
+              class="w-full lc-pill-secondary py-3 text-base"
+              style={{ borderRadius: '10px' }}
             >
               Enter nsec manually
             </button>
             <div class="text-center pt-2">
-              <a href="/" class="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+              <a href="/" class="text-sm hover:underline" style={{ color: 'var(--color-text-secondary)' }}>
                 Back to home
               </a>
             </div>
@@ -136,19 +132,24 @@ export const AdminAuth = ({ onAuthenticated }: AdminAuthProps) => {
               onInput={(e) => setNsec((e.target as HTMLInputElement).value)}
               placeholder="nsec1... or hex private key"
               class="w-full px-4 py-3 rounded-lg text-sm"
-              style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border)' }}
+              style={{ background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border)' }}
             />
             <button
               onClick={signWithNsec}
               disabled={loading || !nsec}
-              class="w-full py-3 rounded-lg font-medium transition-colors disabled:opacity-50"
-              style={{ background: 'var(--color-accent)', color: '#fff' }}
+              class="w-full lc-pill-primary py-3 text-base"
+              style={{ borderRadius: '10px' }}
             >
-              {loading ? 'Signing...' : 'Sign in'}
+              {loading ? (
+                <span class="flex items-center justify-center gap-2">
+                  <span class="lc-spinner" style={{ width: '16px', height: '16px', borderTopColor: '#0a0a0a' }} />
+                  Signing...
+                </span>
+              ) : 'Sign in'}
             </button>
             <button
               onClick={() => { setMode('choose'); setNsec('') }}
-              class="w-full py-2 text-sm"
+              class="w-full py-2 text-sm hover:underline"
               style={{ color: 'var(--color-text-secondary)' }}
             >
               Back
