@@ -1,3 +1,4 @@
+#![recursion_limit = "512"]
 #![warn(clippy::missing_errors_doc)]
 #![warn(clippy::missing_panics_doc)]
 #![warn(clippy::missing_safety_doc)]
@@ -128,6 +129,14 @@ async fn async_main() -> Result<()> {
         db_path: relay_settings.db_path.clone(),
         max_limit: relay_settings.max_limit,
         max_subscriptions: relay_settings.max_subscriptions,
+        relay_name: relay_settings.relay_name.clone(),
+        relay_description: relay_settings.relay_description.clone(),
+        event_retention: relay_settings.event_retention,
+        prune_interval: relay_settings.prune_interval,
+        prune_kinds: relay_settings.prune_kinds.clone(),
+        pubkey_rate_limit_per_minute: relay_settings.pubkey_rate_limit_per_minute,
+        connection_rate_limit_per_minute: relay_settings.connection_rate_limit_per_minute,
+        global_rate_limit_per_minute: relay_settings.global_rate_limit_per_minute,
     };
 
     if let Some(target_url) = args.relay_url {

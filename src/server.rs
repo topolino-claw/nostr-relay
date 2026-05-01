@@ -2,17 +2,20 @@ use crate::{
     admin, app_state::HttpServerState, blacklist::Blacklist, config, follow_sync, groups::Groups,
     groups_event_processor::GroupsRelayProcessor, handler, metrics,
     metrics_handler::PrometheusSubscriptionMetricsHandler,
+    pruner::{self, PrunerConfig, PrunerStats},
     reference_accounts::ReferenceAccounts,
     sampled_metrics_handler::SampledMetricsHandler, whitelist::Whitelist, RelayDatabase,
 };
 use anyhow::Result;
 use axum::{response::IntoResponse, routing::get, Router};
+use governor::Quota;
 use relay_builder::{handle_upgrade, HandlerFactory, WebSocketUpgrade};
 use nostr_sdk::prelude::PublicKey;
 use relay_builder::{
-    CryptoHelper, Nip40ExpirationMiddleware, Nip70Middleware, RelayBuilder, RelayConfig, RelayInfo,
-    WebSocketConfig,
+    middlewares::RateLimitMiddleware, CryptoHelper, Nip40ExpirationMiddleware, Nip70Middleware,
+    RelayBuilder, RelayConfig, RelayInfo, WebSocketConfig,
 };
+use std::num::NonZeroU32;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
@@ -34,6 +37,12 @@ pub struct ServerState {
     pub reference_accounts: ReferenceAccounts,
     pub start_time: std::time::Instant,
     pub config_dir: String,
+    /// Pruner stats; None when pruning is disabled.
+    pub pruner_stats: Option<Arc<PrunerStats>>,
+    /// Active pruner config; mirrors `pruner_stats` presence.
+    pub pruner_config: Option<PrunerConfig>,
+    pub relay_name: String,
+    pub relay_description: String,
 }
 
 pub async fn run_server(
@@ -68,6 +77,8 @@ pub async fn run_server(
     };
 
     let _crypto_helper = CryptoHelper::new(Arc::new(relay_keys.clone()));
+    // Keep a handle to the database for the background pruner before moving it into RelayConfig.
+    let database_for_pruner = Arc::clone(&database);
     let mut relay_config =
         RelayConfig::new(settings.relay_url.clone(), database, relay_keys.clone())
             .with_subdomains_from_url(&settings.relay_url)
@@ -124,17 +135,57 @@ pub async fn run_server(
     }
     admin::init_admin_state(admin_pubkeys, settings.relay_url.clone());
 
-    let groups_processor =
+    let mut groups_processor =
         GroupsRelayProcessor::new(groups.clone(), relay_keys.public_key, whitelist.clone());
+    if let Some(per_minute) = settings.pubkey_rate_limit_per_minute {
+        if per_minute > 0 {
+            info!("Per-pubkey rate limit enabled: {} events/minute", per_minute);
+            groups_processor = groups_processor.with_pubkey_rate_limit(per_minute);
+        }
+    }
 
     // Create cancellation token and connection counter
     let cancellation_token = CancellationToken::new();
     let connection_counter = Arc::new(AtomicUsize::new(0));
 
-    // Define relay information
+    // Spin up the background event pruner if retention is configured.
+    let (pruner_stats, pruner_config_opt) = if let Some(retention) = settings.event_retention {
+        if retention.as_secs() > 0 {
+            let cfg = PrunerConfig::from_settings(
+                retention,
+                settings.prune_interval,
+                settings.prune_kinds.clone(),
+            );
+            let stats = Arc::new(PrunerStats::default());
+            pruner::spawn(
+                database_for_pruner.clone(),
+                cfg.clone(),
+                stats.clone(),
+                cancellation_token.clone(),
+            );
+            (Some(stats), Some(cfg))
+        } else {
+            (None, None)
+        }
+    } else {
+        (None, None)
+    };
+
+    // Define relay information (advertised name/description configurable per instance).
+    let relay_name = settings
+        .relay_name
+        .clone()
+        .unwrap_or_else(|| "Obelisk Groups Relay".to_string());
+    let relay_description = settings.relay_description.clone().unwrap_or_else(|| {
+        if whitelist.is_empty() {
+            "NIP-29 groups relay for Obelisk. Public access.".to_string()
+        } else {
+            "NIP-29 groups relay for Obelisk. Auth-required, whitelisted access.".to_string()
+        }
+    });
     let _relay_info = RelayInfo {
-        name: "Obelisk Groups Relay".to_string(),
-        description: "NIP-29 groups relay for Obelisk. Auth-required, whitelisted access.".to_string(),
+        name: relay_name.clone(),
+        description: relay_description.clone(),
         pubkey: relay_keys.public_key.to_string(),
         contact: "npub1m9vsm9d8sy0pevcjhenwm4ny6l37dm2hsg4dnusna43ql3n5305qy4zlg4".to_string(),
         supported_nips: vec![1, 9, 11, 29, 40, 42, 70],
@@ -142,6 +193,33 @@ pub async fn run_server(
         version: env!("CARGO_PKG_VERSION").to_string(),
         icon: None,
     };
+
+    // Build per-connection + global event rate limits. We always install the
+    // middleware (with effectively-unlimited defaults) so the static middleware
+    // chain type is fixed regardless of config. Configured values bring the cap
+    // down to the desired protection level.
+    fn quota_per_minute(n: u32, fallback: u32) -> Quota {
+        let n = if n == 0 { fallback } else { n };
+        let nz = NonZeroU32::new(n).unwrap_or_else(|| NonZeroU32::new(fallback).unwrap());
+        Quota::per_minute(nz)
+    }
+    let per_conn_quota = quota_per_minute(
+        settings.connection_rate_limit_per_minute.unwrap_or(0),
+        // default: 600/min (~10/s) — generous; tighten via settings.local.yml.
+        600,
+    );
+    let global_quota = quota_per_minute(
+        settings.global_rate_limit_per_minute.unwrap_or(0),
+        // default: 60_000/min — effectively unlimited unless explicitly configured.
+        60_000,
+    );
+    if let Some(n) = settings.connection_rate_limit_per_minute {
+        info!("Per-connection rate limit: {} events/minute", n);
+    }
+    if let Some(n) = settings.global_rate_limit_per_minute {
+        info!("Global rate limit: {} events/minute", n);
+    }
+    let rate_limiter = RateLimitMiddleware::<()>::with_global_limit(per_conn_quota, global_quota);
 
     // Build the relay service
     let handler_factory = Arc::new(
@@ -154,6 +232,7 @@ pub async fn run_server(
             .relay_info(_relay_info.clone())
             .build_with(|chain| {
                 chain
+                    .with(rate_limiter)
                     .with(Nip40ExpirationMiddleware::new())
                     .with(Nip70Middleware)
             })
@@ -170,6 +249,10 @@ pub async fn run_server(
         reference_accounts: reference_accounts.clone(),
         start_time: std::time::Instant::now(),
         config_dir: "config".to_string(),
+        pruner_stats,
+        pruner_config: pruner_config_opt,
+        relay_name: relay_name.clone(),
+        relay_description: relay_description.clone(),
     });
 
     let cors = CorsLayer::new()

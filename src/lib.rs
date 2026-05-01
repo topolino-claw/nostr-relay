@@ -1,3 +1,5 @@
+#![recursion_limit = "512"]
+
 pub mod admin;
 pub mod app_state;
 pub mod blacklist;
@@ -11,6 +13,7 @@ pub mod groups_event_processor;
 pub mod handler;
 pub mod metrics;
 pub mod metrics_handler;
+pub mod pruner;
 pub mod reference_accounts;
 #[cfg(test)]
 pub mod relay_middleware_integration_tests;

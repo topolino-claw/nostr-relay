@@ -6,11 +6,17 @@ use crate::groups::{
 };
 use crate::whitelist::Whitelist;
 use crate::Groups;
+use governor::{DefaultKeyedRateLimiter, Quota, RateLimiter};
 use nostr_sdk::prelude::*;
 use relay_builder::{EventContext, EventProcessor, Result, StoreCommand};
+use std::num::NonZeroU32;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::debug;
+
+/// Per-pubkey token-bucket rate limiter. Keyed by pubkey hex; spammers reconnecting
+/// or rotating connections still hit the same bucket as long as they sign with the same key.
+pub type PubkeyLimiter = DefaultKeyedRateLimiter<PublicKey>;
 
 /// Groups event processor implementing NIP-29 (Relay-based Groups) functionality.
 ///
@@ -23,20 +29,27 @@ use tracing::debug;
 ///
 /// The processor is extracted from the original Nip29Middleware to enable reusability
 /// and better testability while maintaining identical functionality.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct GroupsRelayProcessor {
     groups: Arc<Groups>,
     relay_pubkey: PublicKey,
     whitelist: Whitelist,
+    /// Optional per-pubkey rate limiter. None disables per-pubkey rate limiting.
+    pubkey_limiter: Option<Arc<PubkeyLimiter>>,
+}
+
+impl std::fmt::Debug for GroupsRelayProcessor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GroupsRelayProcessor")
+            .field("relay_pubkey", &self.relay_pubkey)
+            .field("whitelist_empty", &self.whitelist.is_empty())
+            .field("pubkey_limiter", &self.pubkey_limiter.is_some())
+            .finish()
+    }
 }
 
 impl GroupsRelayProcessor {
     /// Create a new groups event processor instance.
-    ///
-    /// # Arguments
-    /// * `groups` - The groups state manager for this relay
-    /// * `relay_pubkey` - The relay's public key
-    /// * `whitelist` - Shared whitelist of allowed pubkeys (empty = no restriction)
     pub fn new(
         groups: Arc<Groups>,
         relay_pubkey: PublicKey,
@@ -46,7 +59,17 @@ impl GroupsRelayProcessor {
             groups,
             relay_pubkey,
             whitelist,
+            pubkey_limiter: None,
         }
+    }
+
+    /// Attach a per-pubkey rate limiter. `events_per_minute = 0` is treated as disabled.
+    pub fn with_pubkey_rate_limit(mut self, events_per_minute: u32) -> Self {
+        if let Some(n) = NonZeroU32::new(events_per_minute) {
+            let quota = Quota::per_minute(n);
+            self.pubkey_limiter = Some(Arc::new(RateLimiter::keyed(quota)));
+        }
+        self
     }
 
     /// Check if a pubkey is allowed to use this relay.
@@ -187,6 +210,16 @@ impl EventProcessor for GroupsRelayProcessor {
             return Err(relay_builder::Error::restricted(
                 "Access denied: your pubkey is not whitelisted on this relay".to_string(),
             ));
+        }
+
+        // Per-pubkey rate limit: spammers signing with the same key share one bucket.
+        // Relay's own pubkey is exempt (used for replaceable group state events).
+        if let Some(limiter) = &self.pubkey_limiter {
+            if event.pubkey != self.relay_pubkey && limiter.check_key(&event.pubkey).is_err() {
+                return Err(relay_builder::Error::restricted(
+                    "rate limit exceeded for this pubkey".to_string(),
+                ));
+            }
         }
 
         let subdomain = context.subdomain.clone();

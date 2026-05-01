@@ -1,0 +1,41 @@
+relay:
+  # Distinct keypair for the public relay instance.
+  relay_secret_key: "REPLACE_ME_WITH_HEX_64"   # generate with: openssl rand -hex 32
+  relay_url: "wss://public.obelisk.ar"
+  db_path: "/app/db"
+  local_addr: "0.0.0.0:8080"
+
+  relay_name: "Obelisk Public Relay"
+  relay_description: "Public NIP-29 groups relay for Obelisk. Open to all pubkeys; messages auto-pruned after 48h; per-pubkey rate limited."
+
+  # Empty whitelist => no pubkey restriction (public mode).
+  whitelisted_pubkeys: []
+
+  # No admin pubkeys on the public relay. With this list empty, the
+  # /api/admin/* mutating routes (whitelist, reference accounts, group delete)
+  # cannot authenticate anyone — server information is effectively immutable
+  # over HTTP. Public read-only status endpoints (/api/relay-info,
+  # /api/retention) remain available. Restart the container to apply.
+  admin_pubkeys: []
+
+  # Auto-prune events of these kinds older than `event_retention`.
+  # Defaults to NIP-29 chat-style kinds [9, 11, 12] when omitted.
+  event_retention: "48h"
+  prune_interval: "1h"
+  # prune_kinds: [9, 11, 12]
+
+  # Per-pubkey rate limit — keyed by signer pubkey, survives reconnects.
+  # Very generous: 100/s sustained per npub; only catches pathological abuse.
+  pubkey_rate_limit_per_minute: 6000
+  # Per-connection rate limit (defense in depth against unauthenticated floods).
+  connection_rate_limit_per_minute: 12000
+  # Global cap (~10000/s); plenty of room for many concurrent calls.
+  global_rate_limit_per_minute: 600000
+
+  max_subscriptions: 50
+  max_limit: 500
+
+  websocket:
+    max_connection_duration: "1h"
+    idle_timeout: "15m"
+    max_connections: 500

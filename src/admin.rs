@@ -199,6 +199,7 @@ pub fn admin_routes() -> Router<Arc<ServerState>> {
         .route("/whitelist", get(handle_whitelist_list))
         .route("/whitelist", post(handle_whitelist_add))
         .route("/whitelist/{hex}", delete(handle_whitelist_remove))
+        .route("/retention", get(handle_retention_status))
         .route("/groups", get(handle_groups))
         .route("/groups/{id}", delete(handle_group_delete))
         .route("/stats", get(handle_stats))
@@ -230,7 +231,9 @@ pub fn admin_routes() -> Router<Arc<ServerState>> {
 }
 
 pub fn public_api_routes() -> Router<Arc<ServerState>> {
-    Router::new().route("/relay-info", get(handle_relay_info))
+    Router::new()
+        .route("/relay-info", get(handle_relay_info))
+        .route("/retention", get(handle_retention_status))
 }
 
 // --- Handlers ---
@@ -592,11 +595,56 @@ async fn handle_relay_info(
     }
 
     Json(RelayInfoResponse {
-        name: "Obelisk Groups Relay".to_string(),
-        description: "NIP-29 groups relay for Obelisk. Auth-required, whitelisted access."
-            .to_string(),
+        name: state.relay_name.clone(),
+        description: state.relay_description.clone(),
         group_count,
         supported_nips: vec![1, 9, 11, 29, 40, 42, 70],
+    })
+}
+
+// --- Retention / pruner status ---
+
+#[derive(Serialize)]
+struct RetentionStatus {
+    enabled: bool,
+    retention_secs: Option<u64>,
+    interval_secs: Option<u64>,
+    prune_kinds: Option<Vec<u16>>,
+    total_pruned: u64,
+    runs: u64,
+    last_run_unix: i64,
+}
+
+async fn handle_retention_status(
+    State(state): State<Arc<ServerState>>,
+) -> impl IntoResponse {
+    let (enabled, retention_secs, interval_secs, prune_kinds) = match &state.pruner_config {
+        Some(cfg) => (
+            true,
+            Some(cfg.retention.as_secs()),
+            Some(cfg.interval.as_secs()),
+            Some(cfg.kinds_as_u16()),
+        ),
+        None => (false, None, None, None),
+    };
+
+    let (total_pruned, runs, last_run_unix) = match &state.pruner_stats {
+        Some(s) => (
+            s.total_pruned.load(Ordering::Relaxed),
+            s.runs.load(Ordering::Relaxed),
+            s.last_run_unix.load(Ordering::Relaxed),
+        ),
+        None => (0, 0, 0),
+    };
+
+    Json(RetentionStatus {
+        enabled,
+        retention_secs,
+        interval_secs,
+        prune_kinds,
+        total_pruned,
+        runs,
+        last_run_unix,
     })
 }
 

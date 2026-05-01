@@ -10,6 +10,14 @@
 
 crates/groups_relay/db/*
 
+# Public relay instance config — contains a private key, never commit.
+# Commit `public-config/settings.local.yml.example` instead.
+public-config/settings.local.yml
+
+# DB backups (e.g. obelisk-backup-YYYYMMDD-HHMM.sql.gz). Never in git.
+*.sql.gz
+obelisk-backup-*
+
 frontend/node_modules/*
 frontend/dist/*
 

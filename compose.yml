@@ -20,5 +20,31 @@ services:
       start_period: 60s
     restart: unless-stopped
 
+  # Public, unrestricted instance of the same relay binary, exposed via Cloudflare
+  # tunnel as wss://public.obelisk.ar. Empty whitelist + 48h auto-prune + per-pubkey
+  # rate limits — see public-config/settings.local.yml.
+  public_relay:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./public-config:/app/config
+      - public-relay-db:/app/db
+      - ./public-config/branding/favicon.ico:/app/frontend/dist/favicon.ico:ro
+    environment:
+      RUST_LOG: "${RUST_LOG:-info}"
+      NIP29__relay__relay_url: "wss://public.obelisk.ar"
+      TOKIO_BLOCKING_THREADS: "2048"
+    ports:
+      - "8081:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "--max-time", "5", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
 volumes:
   relay-db:
+  public-relay-db:

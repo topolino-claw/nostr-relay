@@ -25,6 +25,30 @@ pub struct RelaySettings {
     pub whitelisted_pubkeys: Vec<String>,
     #[serde(default)]
     pub admin_pubkeys: Vec<String>,
+    /// Optional advertised relay name (NIP-11 / admin info). Defaults baked in if None.
+    #[serde(default)]
+    pub relay_name: Option<String>,
+    /// Optional advertised relay description (NIP-11 / admin info).
+    #[serde(default)]
+    pub relay_description: Option<String>,
+    /// If set, events of `prune_kinds` older than this duration are deleted by a background task.
+    #[serde(default, with = "humantime_serde")]
+    pub event_retention: Option<Duration>,
+    /// How often the pruner runs. Defaults to retention/48 (clamped 60s..6h) if not set.
+    #[serde(default, with = "humantime_serde")]
+    pub prune_interval: Option<Duration>,
+    /// Kinds eligible for time-based pruning. Defaults to NIP-29 chat-style kinds [9, 11, 12].
+    #[serde(default)]
+    pub prune_kinds: Option<Vec<u16>>,
+    /// Per-pubkey events/minute. None disables the per-pubkey limiter.
+    #[serde(default)]
+    pub pubkey_rate_limit_per_minute: Option<u32>,
+    /// Per-connection events/minute. None disables the per-connection limiter.
+    #[serde(default)]
+    pub connection_rate_limit_per_minute: Option<u32>,
+    /// Global events/minute across the whole relay. None disables the global limiter.
+    #[serde(default)]
+    pub global_rate_limit_per_minute: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
@@ -135,6 +159,14 @@ pub struct Settings {
     pub db_path: String,
     pub max_limit: usize,
     pub max_subscriptions: usize,
+    pub relay_name: Option<String>,
+    pub relay_description: Option<String>,
+    pub event_retention: Option<Duration>,
+    pub prune_interval: Option<Duration>,
+    pub prune_kinds: Option<Vec<u16>>,
+    pub pubkey_rate_limit_per_minute: Option<u32>,
+    pub connection_rate_limit_per_minute: Option<u32>,
+    pub global_rate_limit_per_minute: Option<u32>,
 }
 
 pub use nostr_sdk::Keys;
